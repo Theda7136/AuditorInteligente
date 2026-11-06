@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revisión de contratos</title>
+    <link rel="stylesheet" href="css/app.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js" integrity="sha512-ml/QKfG3+Yes6TwOzQb7aCNtJF4PUyha6R3w8p5o2ATD5ZLUQGFe8cTN5g8Y0cqXx6V6Jmt0MpFRQJvA4Bsk0A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.0/mammoth.browser.min.js" integrity="sha512-2BI6f/i3GcWAfYQLMDOJ6kd6u3oWRHyuNowAump5D8ZJPSxHI5CdIjy4JNrDMSJXpe5iVNQvmlLdOI1GDK3TUA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+    <input id="hiddenFileInput" class="hidden" type="file" accept=".txt,.pdf,.docx">
+    <div class="wrap">
+        <header class="topbar">
+            <div>
+                <h1>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 7h8M8 11h8M8 15h5M6 3h8l4 4v14H6z"/></svg>
+                    Revisión de contratos
+                </h1>
+                <p>Dictamen de riesgos para negociar. No sustituye a un abogado.</p>
+            </div>
+            <div id="statusBadge" class="badge">
+                <span class="dot"></span>
+                <span id="statusText">Modo local</span>
+            </div>
+        </header>
+
+        <p id="appNotice" class="notice" hidden></p>
+
+        <section class="card account-card no-print" aria-labelledby="accountHeading">
+            <div class="row">
+                <h2 id="accountHeading">Tu cuenta</h2>
+                <span id="accountStatus" class="muted">Modo invitado</span>
+            </div>
+            <div id="authForms" class="fields">
+                <div>
+                    <label for="authEmail">Correo electrónico</label>
+                    <input id="authEmail" type="email" autocomplete="email" maxlength="254" placeholder="tu@correo.com">
+                </div>
+                <div>
+                    <label for="authPassword">Contraseña</label>
+                    <input id="authPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" placeholder="Mínimo 10 caracteres">
+                </div>
+                <div class="account-actions">
+                    <button id="loginBtn" class="btn accent" type="button">Iniciar sesión</button>
+                    <button id="registerBtn" class="btn" type="button">Crear cuenta</button>
+                </div>
+            </div>
+            <div id="accountSession" hidden>
+                <p class="muted">Sesión iniciada como <strong id="accountEmail"></strong>. Tu historial se guarda en esta cuenta.</p>
+                <button id="logoutBtn" class="btn ghost" type="button">Cerrar sesión</button>
+            </div>
+            <p id="authMessage" class="muted" role="status">Puedes analizar sin cuenta. Inicia sesión para guardar tu historial de forma privada en este servidor.</p>
+        </section>
+
+        <div class="layout">
+            <div class="stack">
+                <section class="card">
+                    <div class="row">
+                        <h2>Documento</h2>
+                        <span class="muted">TXT, PDF o DOCX</span>
+                    </div>
+                    <div class="fields">
+                        <div>
+                            <label for="contractType">Tipo de contrato</label>
+                            <select id="contractType">
+                                <option value="Servicios" selected>Prestación de servicios</option>
+                                <option value="NDA">Acuerdo de confidencialidad</option>
+                                <option value="Arrendamiento">Arrendamiento</option>
+                                <option value="Compraventa">Compraventa</option>
+                                <option value="Licitación">Licitación / pliego</option>
+                                <option value="Laboral">Laboral</option>
+                                <option value="Distribución">Distribución</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="jurisdiction">Jurisdicción de referencia</label>
+                            <select id="jurisdiction">
+                                <option value="CO" selected>Colombia</option>
+                                <option value="MX">México</option>
+                                <option value="ES">España</option>
+                                <option value="PE">Perú</option>
+                                <option value="CL">Chile</option>
+                                <option value="AR">Argentina</option>
+                                <option value="OTRO">Otra</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="party">Parte que representas</label>
+                            <select id="party">
+                                <option value="proveedor" selected>Proveedor</option>
+                                <option value="cliente">Cliente</option>
+                                <option value="neutral">Revisión neutral</option>
+                            </select>
+                        </div>
+                    </div>
+                    <label for="contractText">Texto del contrato</label>
+                    <textarea id="contractText">CONTRATO DE PRESTACIÓN DE SERVICIOS
+
+ENTRE [NOMBRE DE LA EMPRESA], en adelante "EL CLIENTE"; Y [NOMBRE DEL PROVEEDOR], en adelante "EL PROVEEDOR".
+
+1. OBJETO: El PROVEEDOR se obliga a prestar servicios de consultoría tecnológica al CLIENTE por el plazo de 24 meses.
+
+2. PRECIO Y FORMA DE PAGO: El precio total será de USD $120,000 pagaderos en 12 cuotas mensuales de USD $10,000 cada una, con penalización del 2% diario por mora.
+
+3. CONFIDENCIALIDAD: Las partes se obligan a mantener confidencialidad por tiempo indefinido luego de finalizado el contrato.
+
+4. TERMINACIÓN: El CLIENTE podrá dar por terminado el contrato unilateralmente con 15 días de anticipación sin responsabilidad alguna.
+
+5. RESPONSABILIDAD: El PROVEEDOR solo será responsable por daños directos hasta el monto de una cuota mensual, excluyendo daños indirectos o consecuenciales.</textarea>
+                    <div class="actions">
+                        <button id="uploadBtn" class="btn" type="button">Subir archivo</button>
+                        <div class="actions-right">
+                            <button id="clearTextBtn" class="btn ghost" type="button">Limpiar texto</button>
+                            <button id="analyzeBtn" class="btn accent" type="button">
+                                <span id="analyzeSpinner" class="spinner hidden" aria-hidden="true"></span>
+                                <span id="analyzeBtnText">Analizar contrato</span>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <details class="card no-print">
+                    <summary>
+                        <span>Conexión y prioridades</span>
+                        <span class="muted"><span id="configStatusText">Modo local</span> <span class="chevron" aria-hidden="true">⌄</span></span>
+                    </summary>
+                    <div class="config-body">
+                        <div class="help-row">
+                            <div class="model-field">
+                                <label for="modelSelect">Modelo</label>
+                                <select id="modelSelect"></select>
+                            </div>
+                            <span id="serverStatus" class="muted">Comprobando servidor…</span>
+                        </div>
+                        <p class="muted">La conexión con Gemini se gestiona desde el servidor. El contrato solo se envía al proveedor si confirmas el envío. La clave de servicio no se expone al navegador.</p>
+                        <div class="priorities">
+                            <div>
+                                <label for="priorityFinancial">Riesgo financiero</label>
+                                <select id="priorityFinancial"><option value="alta">Alta</option><option value="media" selected>Media</option><option value="baja">Baja</option></select>
+                            </div>
+                            <div>
+                                <label for="priorityAbusive">Cláusulas abusivas</label>
+                                <select id="priorityAbusive"><option value="alta" selected>Alta</option><option value="media">Media</option><option value="baja">Baja</option></select>
+                            </div>
+                            <div>
+                                <label for="priorityPenalties">Fechas y penalizaciones</label>
+                                <select id="priorityPenalties"><option value="alta" selected>Alta</option><option value="media">Media</option><option value="baja">Baja</option></select>
+                            </div>
+                            <div>
+                                <label for="priorityCompliance">Cumplimiento y ley aplicable</label>
+                                <select id="priorityCompliance"><option value="alta" selected>Alta</option><option value="media">Media</option><option value="baja">Baja</option></select>
+                            </div>
+                        </div>
+                        <label class="checkline" for="storeFullText">
+                            <input id="storeFullText" type="checkbox">
+                            Guardar el texto completo del contrato en este navegador
+                        </label>
+                    </div>
+                </details>
+
+                <section class="card no-print">
+                    <div class="row">
+                        <h2>Historial <span id="historyCountBadge" class="count">0</span></h2>
+                        <button id="clearHistoryBtn" class="btn danger" type="button">Limpiar historial</button>
+                    </div>
+                    <p class="muted">En modo invitado el historial queda en este navegador. Con sesión iniciada, se guarda en tu cuenta un extracto y el dictamen; nunca el contrato completo.</p>
+                    <div id="historyList" class="history"></div>
+                </section>
+            </div>
+
+            <aside class="card">
+                <div class="row">
+                    <h2>Dictamen</h2>
+                    <span id="auditSourceTag" class="tag">Sin análisis</span>
+                </div>
+                <div id="emptyState" class="empty">
+                    <p>Aquí aparecerá la puntuación, las citas y las recomendaciones después de analizar.</p>
+                </div>
+                <div id="resultsBody" hidden>
+                    <div id="riskCard" class="risk-card" data-band="low">
+                        <header>
+                            <span class="muted">Puntuación de riesgo</span>
+                            <span class="muted">0–100</span>
+                        </header>
+                        <div class="meter-row">
+                            <div class="meter" aria-hidden="true"><span id="riskScoreBar"></span></div>
+                            <span id="riskScore" class="score-num">0</span>
+                        </div>
+                        <div class="row">
+                            <strong id="riskLevelLabel">Riesgo</strong>
+                            <span id="auditTimestampText" class="muted"></span>
+                        </div>
+                    </div>
+                    <p id="contextLine" class="muted"></p>
+                    <p id="truncationNote" class="notice warn" hidden></p>
+                    <div class="row">
+                        <h3>Hallazgos</h3>
+                        <span id="alertsCountBadge" class="count">0</span>
+                    </div>
+                    <div id="alertsContainer" class="alerts"></div>
+                    <div class="recs">
+                        <h3>Recomendaciones</h3>
+                        <ul id="recommendationsList"></ul>
+                    </div>
+                    <p class="muted">Pulsa un hallazgo para localizar la cita en el texto. Esto no es un dictamen legal.</p>
+                    <div class="export-row">
+                        <button id="exportPdfBtn" class="btn" type="button" disabled>Exportar PDF</button>
+                        <button id="exportTxtBtn" class="btn secondary" type="button" disabled>Descargar TXT</button>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <dialog id="consentDialog" class="dialog">
+        <h3>El contrato saldrá de este navegador</h3>
+        <p>Gemini recibirá el texto, el tipo de contrato, la jurisdicción, la parte que representas y las prioridades. Google procesa ese contenido con su propia política. La clave no viaja en la dirección de la solicitud.</p>
+        <div class="actions-right">
+            <button id="consentDecline" class="btn secondary" type="button">Analizar solo en local</button>
+            <button id="consentAccept" class="btn accent" type="button">Enviar a Gemini</button>
+        </div>
+    </dialog>
+
+    <script src="js/audit-engine.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

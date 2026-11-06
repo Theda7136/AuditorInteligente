@@ -1,0 +1,13 @@
+{
+  "name": "auditor-inteligente",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Revisión de contratos con motor local y backend Gemini.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
