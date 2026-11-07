@@ -1,0 +1,6 @@
+Auditor Inteligente API hardening
+Base: main at 3608cd0ff4bcf888ca40f7b125cfea514d67682d
+
+Files are arranged at their repository paths. Copy them into the matching paths in the repository.
+Includes server validation, origin and content-type checks, guest/user/IP hourly quotas, a 4096 token output cap, docs, and automated security tests.
+The quota counters are process-local and reset when the server restarts.
