@@ -5,6 +5,7 @@
   "description": "Revisión de contratos con motor local y backend Gemini.",
   "scripts": {
     "start": "node server.js",
+    "backup": "node backup-db.js",
     "test": "node --test"
   },
   "engines": {

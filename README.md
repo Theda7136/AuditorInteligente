@@ -39,7 +39,19 @@ npm start
 
 Abre [http://localhost:8765](http://localhost:8765).
 
-La primera ejecución crea automáticamente `data/auditor-inteligente.sqlite`. Esa carpeta y sus archivos están excluidos de Git. No borres la base de datos si quieres conservar cuentas e historial. El servidor también envía una política CSP: permite scripts propios y los recursos fijados de cdnjs, bloquea scripts incrustados, objetos y marcos, y limita las conexiones al mismo origen.
+La primera ejecución crea automáticamente `data/auditor-inteligente.sqlite`. Esa carpeta y sus archivos están excluidos de Git. No borres la base si quieres conservar cuentas e historial. El servidor también envía una política CSP: permite scripts propios y los recursos fijados de cdnjs, bloquea scripts incrustados, objetos y marcos, y limita las conexiones al mismo origen.
+
+## Copias de seguridad
+
+Crea una copia verificada mientras el servidor está en uso:
+
+```bash
+npm run backup
+```
+
+El comando guarda una instantánea en `data/backups/`, verifica la integridad SQLite y genera un nombre nuevo sin sobrescribir copias anteriores. Cada copia contiene cuentas, sesiones e historial con extractos contractuales; protégela como la base original. En sistemas POSIX se aplican permisos restrictivos al directorio y al archivo. En Windows, la copia hereda los permisos ACL del directorio.
+
+Programa copias periódicas y traslada una copia cifrada a un almacenamiento seguro separado del servidor. Conserva solo el periodo que defina tu política de retención. Para restaurar: detén la aplicación, guarda aparte la base actual, copia la base de respaldo elegida a `data/auditor-inteligente.sqlite` y vuelve a iniciar el servidor.
 
 ## Cuentas e historial
 
