@@ -36,8 +36,11 @@ test('activa HSTS en producción solo si HTTPS viene de un proxy confiable', asy
         assert.equal(insecureResponse.headers.get('strict-transport-security'), null);
     } finally {
         await new Promise(resolve => trustedServer.close(resolve));
+        if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousEnvironment;
     }
 
+    process.env.NODE_ENV = 'production';
     const untrustedServer = createServer({ dbPath: ':memory:', trustedProxyIps: '127.0.0.2' });
     await new Promise(resolve => untrustedServer.listen(0, '127.0.0.1', resolve));
     const untrustedAddress = untrustedServer.address();
