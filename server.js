@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('node:http');
+const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 const engine = require('./js/audit-engine.js');
@@ -41,6 +42,66 @@ function loadEnvFile() {
     }
 }
 
+
+function normalizeIpAddress(value) {
+    const address = String(value || '').trim();
+    const mappedIpv4 = address.match(/^::ffff:(\\d{1,3}(?:\\.\\d{1,3}){3})$/i);
+    const normalized = mappedIpv4 ? mappedIpv4[1] : address;
+    return net.isIP(normalized) ? normalized : null;
+}
+
+function createTrustedProxyList(value = process.env.TRUSTED_PROXY_IPS || '') {
+    const trusted = new net.BlockList();
+    for (const entry of String(value).split(',').map(item => item.trim()).filter(Boolean)) {
+        const separator = entry.lastIndexOf('/');
+        const address = normalizeIpAddress(separator < 0 ? entry : entry.slice(0, separator));
+        const type = address && net.isIP(address) === 4 ? 'ipv4' : 'ipv6';
+        if (!address) {
+            throw new Error('TRUSTED_PROXY_IPS contiene una dirección IP no válida.');
+        }
+        try {
+            if (separator < 0) {
+                trusted.addAddress(address, type);
+            } else {
+                const prefix = Number(entry.slice(separator + 1));
+                const maxPrefix = type === 'ipv4' ? 32 : 128;
+                if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) {
+                    throw new Error('prefijo inválido');
+                }
+                trusted.addSubnet(address, prefix, type);
+            }
+        } catch (error) {
+            throw new Error('TRUSTED_PROXY_IPS contiene una dirección o subred no válida.');
+        }
+    }
+    return trusted;
+}
+
+function isTrustedProxy(address, trustedProxyList) {
+    if (!address || !trustedProxyList) return false;
+    const type = net.isIP(address) === 4 ? 'ipv4' : 'ipv6';
+    return trustedProxyList.check(address, type);
+}
+
+function getClientAddress(request, trustedProxyList = createTrustedProxyList()) {
+    const socketAddress = normalizeIpAddress(request.socket && request.socket.remoteAddress);
+    if (!socketAddress || !isTrustedProxy(socketAddress, trustedProxyList)) {
+        return socketAddress || 'unknown';
+    }
+
+    const forwarded = String(request.headers && request.headers['x-forwarded-for'] || '');
+    if (!forwarded || forwarded.length > 512) return socketAddress;
+    const chain = forwarded.split(',').map(normalizeIpAddress);
+    if (chain.length > 10 || chain.some(address => !address)) return socketAddress;
+
+    let index = chain.length;
+    let current = socketAddress;
+    while (isTrustedProxy(current, trustedProxyList) && index > 0) {
+        current = chain[--index];
+    }
+    return current;
+}
+
 function sendJson(response, status, payload) {
     response.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
@@ -74,9 +135,9 @@ function readJson(request) {
     });
 }
 
-function isRateLimited(request) {
+function isRateLimited(request, trustedProxyList) {
     const now = Date.now();
-    const address = request.socket.remoteAddress || 'unknown';
+    const address = getClientAddress(request, trustedProxyList);
     const previous = requestCounts.get(address);
     if (!previous || now - previous.startedAt >= 60_000) {
         requestCounts.set(address, { startedAt: now, count: 1 });
@@ -142,8 +203,8 @@ function normalizeAnalysisInput(payload) {
     };
 }
 
-function analysisQuota(request, userId, now = Date.now(), quotaStore = null) {
-    const address = request.socket.remoteAddress || 'unknown';
+function analysisQuota(request, userId, now = Date.now(), quotaStore = null, trustedProxyList = null) {
+    const address = getClientAddress(request, trustedProxyList || createTrustedProxyList());
     const ipKey = 'ip:' + crypto.createHash('sha256').update(address).digest('hex');
     const userKey = userId ? 'user:' + String(userId) : null;
     const checks = [{ key: ipKey, limit: ANALYSES_PER_IP }];
@@ -197,13 +258,13 @@ function analyzeEnvelopeError(request) {
     return null;
 }
 
-function authorizeAnalysis(request, payload, session, now = Date.now(), quotaStore = null) {
+function authorizeAnalysis(request, payload, session, now = Date.now(), quotaStore = null, trustedProxyList = null) {
     const normalized = normalizeAnalysisInput(payload);
     if (normalized.error) return { error: normalized.error };
     if (!process.env.GEMINI_API_KEY) {
         return { error: { status: 503, body: { code: 'NOT_CONFIGURED', error: 'Gemini no está configurado en el servidor.' } } };
     }
-    const quota = analysisQuota(request, session && session.user.id, now, quotaStore);
+    const quota = analysisQuota(request, session && session.user.id, now, quotaStore, trustedProxyList);
     if (!quota.allowed) {
         return {
             error: {
@@ -343,6 +404,7 @@ function clearAuthCookies(response) {
 }
 
 function createServer(options = {}) {
+    const trustedProxyList = createTrustedProxyList(options.trustedProxyIps ?? process.env.TRUSTED_PROXY_IPS ?? '');
     const store = options.store || createAuthStore(options.dbPath || path.join(ROOT, 'data', 'auditor-inteligente.sqlite'));
     const ownStore = !options.store;
 
@@ -385,7 +447,7 @@ function createServer(options = {}) {
             return true;
         }
 
-        if (isRateLimited(request)) {
+        if (isRateLimited(request, trustedProxyList)) {
             sendJson(response, 429, { code: 'RATE', error: 'Demasiados intentos. Espera un minuto.' });
             return true;
         }
@@ -514,7 +576,7 @@ function createServer(options = {}) {
                 }
                 const payload = await readJson(request);
                 const session = getSession(request);
-                const authorization = authorizeAnalysis(request, payload, session, Date.now(), store);
+                const authorization = authorizeAnalysis(request, payload, session, Date.now(), store, trustedProxyList);
                 if (authorization.error) {
                     if (authorization.error.headers) response.setHeader('Retry-After', authorization.error.headers['Retry-After']);
                     sendJson(response, authorization.error.status, authorization.error.body);
@@ -555,6 +617,8 @@ module.exports = {
     createServer,
     loadEnvFile,
     analyzeContract,
+    createTrustedProxyList,
+    getClientAddress,
     normalizeAnalysisInput,
     analysisQuota,
     analyzeOriginAllowed,
