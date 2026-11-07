@@ -8,6 +8,7 @@ const { createAuthStore } = require('../auth-store.js');
 const {
     normalizeAnalysisInput,
     getListenSettings,
+    getGeminiQuotaSettings,
     analysisQuota,
     isRateLimited,
     loginAttemptQuota,
@@ -39,6 +40,17 @@ function requestFrom(address, headers = {}) {
     }
     return { socket: { remoteAddress }, headers: { host: 'app.example.test', ...headers } };
 }
+
+test('valida el límite global configurable de análisis Gemini', () => {
+    assert.deepEqual(getGeminiQuotaSettings({}), { globalAnalysesPerHour: 100 });
+    assert.deepEqual(getGeminiQuotaSettings({ GEMINI_MAX_ANALYSES_PER_HOUR: '250' }), { globalAnalysesPerHour: 250 });
+    for (const value of ['0', '-1', '100001', '1.5', 'no-numérico']) {
+        assert.throws(
+            () => getGeminiQuotaSettings({ GEMINI_MAX_ANALYSES_PER_HOUR: value }),
+            /GEMINI_MAX_ANALYSES_PER_HOUR/
+        );
+    }
+});
 
 test('escucha en loopback por defecto y valida host/puerto configurados', () => {
     assert.deepEqual(getListenSettings({}), { host: '127.0.0.1', port: 8765 });
