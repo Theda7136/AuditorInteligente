@@ -26,7 +26,6 @@ PORT=8765
 HOST=127.0.0.1
 NODE_ENV=development
 TRUSTED_PROXY_IPS=
-GEMINI_MAX_ANALYSES_PER_HOUR=100
 ```
 
 `TRUSTED_PROXY_IPS` se deja vacío por defecto. Si usas un proxy inverso, configura ahí las IP/subredes CIDR de los proxies que controlas; no agregues rangos amplios de red sin confirmar que solo tus proxies pueden conectarse desde ellos.
