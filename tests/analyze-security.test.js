@@ -7,6 +7,8 @@ const { createAuthStore } = require('../auth-store.js');
 const {
     normalizeAnalysisInput,
     analysisQuota,
+    createTrustedProxyList,
+    getClientAddress,
     analyzeOriginAllowed,
     analyzeEnvelopeError,
     authorizeAnalysis,
@@ -34,6 +36,20 @@ test('valida el objeto y los valores que afectan al prompt antes de llamar a Gem
     assert.equal(normalizeAnalysisInput({ ...validInput, model: 'modelo-costoso-desconocido' }).error.status, 400);
     assert.equal(normalizeAnalysisInput({ ...validInput, priorities: { abusive: 'extrema' } }).error.status, 400);
     assert.equal(normalizeAnalysisInput({ ...validInput, contractText: 'x'.repeat(700001) }).error.status, 413);
+});
+
+test('solo acepta IP reenviada por proxies explícitamente confiables', () => {
+    const trusted = createTrustedProxyList('127.0.0.1,10.0.0.0/8');
+    assert.equal(getClientAddress(requestFrom('203.0.113.9', { 'x-forwarded-for': '198.51.100.8' }), trusted), '203.0.113.9');
+    assert.equal(getClientAddress(requestFrom('127.0.0.1', {
+        'x-forwarded-for': '198.51.100.66, 203.0.113.7, 10.1.2.3'
+    }), trusted), '203.0.113.7');
+    assert.equal(getClientAddress(requestFrom('127.0.0.1', { 'x-forwarded-for': 'malformed' }), trusted), '127.0.0.1');
+    assert.equal(getClientAddress(requestFrom('::ffff:127.0.0.1', {
+        'x-forwarded-for': '203.0.113.12'
+    }), trusted), '203.0.113.12');
+    assert.throws(() => createTrustedProxyList('not-an-ip'), /TRUSTED_PROXY_IPS/);
+    assert.throws(() => createTrustedProxyList('10.0.0.0/99'), /TRUSTED_PROXY_IPS/);
 });
 
 test('aplica cuota baja a invitados, cuota por cuenta y techo compartido por IP', () => {
