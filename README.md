@@ -23,7 +23,10 @@ Edita `.env`:
 GEMINI_API_KEY=tu_clave_de_google_ai_studio
 PORT=8765
 NODE_ENV=development
+TRUSTED_PROXY_IPS=
 ```
+
+`TRUSTED_PROXY_IPS` se deja vacío por defecto. Si usas un proxy inverso, configura ahí las IP/subredes CIDR de los proxies que controlas; no agregues rangos amplios de red sin confirmar que solo tus proxies pueden conectarse desde ellos.
 
 La clave es opcional para el análisis local. No compartas `.env` ni lo subas a GitHub. Después inicia el servidor:
 
@@ -78,7 +81,7 @@ El documento solo se envía a Gemini después de que el usuario acepte el envío
 
 Esta versión es para desarrollo y validación local, no está lista para abrirse directamente a Internet. Antes de producción hacen falta, entre otras cosas, HTTPS y configuración de proxy confiable, límites de intentos por cuenta/IP más robustos y distribuidos, recuperación/verificación de cuentas, política formal de retención, copias de seguridad protegidas, monitoreo y revisión de seguridad. SQLite tampoco cifra la base de datos por sí solo: protege el archivo mediante permisos del sistema operativo y almacenamiento seguro.
 
-Las cuotas de análisis se persisten en la base SQLite para el despliegue de un solo servidor. No compartas ese archivo entre instancias simultáneas ni uses este mecanismo como límite de facturación distribuido. Si la aplicación se ejecuta detrás de un proxy inverso, configura una forma confiable de obtener la IP del cliente antes de depender de las cuotas por IP; no confíes directamente en cabeceras reenviadas por cualquier origen.
+Las cuotas de análisis se persisten en la base SQLite para el despliegue de un solo servidor. No compartas ese archivo entre instancias simultáneas ni uses este mecanismo como límite de facturación distribuido. Por defecto, el servidor ignora `X-Forwarded-For` y usa la dirección de la conexión. Si está detrás de un proxy inverso, configura `TRUSTED_PROXY_IPS` con las IP o subredes CIDR exactas de tus proxies (separadas por comas). Solo entonces se aceptará la cadena reenviada, y se recorrerá desde el proxy más cercano. Asegúrate de que el servidor de la aplicación no sea accesible directamente por una ruta que permita suplantar a un proxy confiable.
 
 El score del motor local es heurístico y no representa una probabilidad legal ni un dictamen profesional.
 
