@@ -29,7 +29,7 @@ TRUSTED_PROXY_IPS=
 
 `TRUSTED_PROXY_IPS` se deja vacío por defecto. Si usas un proxy inverso, configura ahí las IP/subredes CIDR de los proxies que controlas; no agregues rangos amplios de red sin confirmar que solo tus proxies pueden conectarse desde ellos.
 
-El servidor escucha en `127.0.0.1` por defecto, de modo que un proxy instalado en el mismo equipo pueda conectarse sin exponer directamente el puerto de la aplicación. En contenedores donde el proxy de la plataforma se conecta por la red del contenedor, establece `HOST=0.0.0.0` y limita el acceso al puerto con la red/firewall de la plataforma para que solo el proxy pueda alcanzarlo. `PORT` y `HOST` se leen al iniciar el servidor.
+El servidor escucha en `127.0.0.1` por defecto, de modo que un proxy instalado en el mismo equipo pueda conectarse sin exponer directamente el puerto de la aplicación. En contenedores donde el proxy de la plataforma se conecta por la red del contenedor, establece `HOST=0.0.0.0` y limita el acceso al puerto con la red/firewall de la plataforma para que solo el proxy pueda alcanzarlo. `PORT` y `HOST` se leen al iniciar el servidor. En producción, HSTS se envía únicamente si la conexión directa usa TLS o si una IP de proxy confiable manda `X-Forwarded-Proto: https`; configura el proxy para sobrescribir ese encabezado y termina TLS en él.
 
 La clave es opcional para el análisis local. No compartas `.env` ni lo subas a GitHub. Después inicia el servidor:
 
