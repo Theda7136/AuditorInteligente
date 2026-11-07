@@ -124,6 +124,35 @@ test('persiste las cuotas en SQLite y no consume la IP cuando se rechaza por cuo
     }
 });
 
+test('aplica y persiste un límite global de 100 análisis por hora en SQLite', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'auditor-global-quota-'));
+    const filename = path.join(directory, 'auth.sqlite');
+    const now = 1_700_000_050_000;
+    let store = createAuthStore(filename);
+    try {
+        for (let count = 0; count < 100; count += 1) {
+            const result = analysisQuota(
+                requestFrom('global-cap-user-' + count),
+                3_000_000 + count,
+                now + count,
+                store
+            );
+            assert.equal(result.allowed, true, 'solicitud global ' + (count + 1));
+        }
+        const limited = analysisQuota(requestFrom('global-cap-user-final'), 4_000_000, now + 101, store);
+        assert.equal(limited.allowed, false);
+        assert.ok(limited.retryAfter > 0);
+
+        store.close();
+        store = createAuthStore(filename);
+        const stillLimited = analysisQuota(requestFrom('global-cap-after-restart'), 4_000_001, now + 102, store);
+        assert.equal(stillLimited.allowed, false);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test('persiste el límite de solicitudes de autenticación por IP tras reiniciar SQLite', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'auditor-auth-rate-'));
     const filename = path.join(directory, 'auth.sqlite');

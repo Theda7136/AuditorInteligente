@@ -14,6 +14,7 @@ const MAX_REQUESTS_PER_MINUTE = 20;
 const LOGIN_ATTEMPTS_PER_EMAIL = 10;
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const ANALYSIS_WINDOW_MS = 60 * 60 * 1000;
+const GLOBAL_ANALYSES_PER_HOUR = 100;
 const GUEST_ANALYSES_PER_IP = 3;
 const ANALYSES_PER_USER = 12;
 const ANALYSES_PER_IP = 20;
@@ -243,7 +244,10 @@ function analysisQuota(request, userId, now = Date.now(), quotaStore = null, tru
     const address = getClientAddress(request, trustedProxyList || createTrustedProxyList());
     const ipKey = 'ip:' + crypto.createHash('sha256').update(address).digest('hex');
     const userKey = userId ? 'user:' + String(userId) : null;
-    const checks = [{ key: ipKey, limit: ANALYSES_PER_IP }];
+    const checks = [
+        { key: 'global:gemini', limit: GLOBAL_ANALYSES_PER_HOUR },
+        { key: ipKey, limit: ANALYSES_PER_IP }
+    ];
     if (userKey) checks.push({ key: userKey, limit: ANALYSES_PER_USER });
     else checks.push({ key: 'guest:' + ipKey, limit: GUEST_ANALYSES_PER_IP });
 
