@@ -101,4 +101,3 @@ tests/                  Pruebas automatizadas
 ```
 
 PDF.js, Mammoth y jsPDF se cargan desde cdnjs con integridad fija. El worker PDF corresponde a PDF.js 3.4.120.
-

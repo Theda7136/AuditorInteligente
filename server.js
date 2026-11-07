@@ -30,7 +30,6 @@ const MIME_TYPES = {
     '.jpg': 'image/jpeg',
     '.ico': 'image/x-icon'
 };
-
 function loadEnvFile() {
     const envPath = path.join(ROOT, '.env');
     if (!fs.existsSync(envPath)) return;
