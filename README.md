@@ -62,7 +62,7 @@ Las contraseñas deben tener entre 10 y 128 caracteres. La sesión dura hasta si
 - `DELETE /api/history`: elimina todo el historial propio.
 - `POST /api/analyze`: solicita análisis a Gemini.
 
-Las rutas de autenticación y de historial requieren protección CSRF en las operaciones de escritura. La API de análisis continúa disponible para el modo invitado.
+Las rutas de autenticación y de historial requieren protección CSRF en las operaciones de escritura. La API de análisis continúa disponible para el modo invitado y aplica estas cuotas por ventana de una hora: 3 análisis por IP invitada, 12 por cuenta y 20 por IP en total. El endpoint acepta únicamente JSON y rechaza solicitudes de origen cruzado. El servidor valida el texto, el modelo y las opciones antes de invocar Gemini; limita la entrada analizada a 350 000 caracteres y la salida del modelo a 4096 tokens. La clave Gemini permanece en el servidor.
 
 ## Pruebas
 
@@ -77,6 +77,8 @@ Las pruebas cubren el motor de reglas, la API, el registro, el inicio/cierre de 
 El documento solo se envía a Gemini después de que el usuario acepte el envío en la interfaz. Google procesa ese contenido bajo sus propias condiciones. En modo cuenta, el servidor guarda el resultado del análisis y un extracto corto; las citas del dictamen pueden contener fragmentos del documento. El texto completo no se guarda en SQLite.
 
 Esta versión es para desarrollo y validación local, no está lista para abrirse directamente a Internet. Antes de producción hacen falta, entre otras cosas, HTTPS y configuración de proxy confiable, límites de intentos por cuenta/IP más robustos y distribuidos, recuperación/verificación de cuentas, política formal de retención, copias de seguridad protegidas, monitoreo y revisión de seguridad. SQLite tampoco cifra la base de datos por sí solo: protege el archivo mediante permisos del sistema operativo y almacenamiento seguro.
+
+Las cuotas de análisis de esta versión viven en la memoria del proceso: se reinician al reiniciar el servidor y no se comparten entre instancias. No deben considerarse un límite de facturación distribuido para una publicación pública.
 
 El score del motor local es heurístico y no representa una probabilidad legal ni un dictamen profesional.
 

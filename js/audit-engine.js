@@ -453,7 +453,7 @@
                 generationConfig: {
                     responseMimeType: 'application/json',
                     responseSchema: AUDIT_SCHEMA,
-                    maxOutputTokens: 8192,
+                    maxOutputTokens: 4096,
                     thinkingConfig: { thinkingLevel: model.thinkingLevel }
                 }
             }
