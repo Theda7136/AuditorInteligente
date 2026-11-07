@@ -84,6 +84,14 @@ function isTrustedProxy(address, trustedProxyList) {
     return trustedProxyList.check(address, type);
 }
 
+
+function isSecureRequest(request, trustedProxyList) {
+    if (request.socket && request.socket.encrypted) return true;
+    const remoteAddress = normalizeIpAddress(request.socket && request.socket.remoteAddress);
+    if (!isTrustedProxy(remoteAddress, trustedProxyList)) return false;
+    return String(request.headers && request.headers['x-forwarded-proto'] || '').trim().toLowerCase() === 'https';
+}
+
 function getClientAddress(request, trustedProxyList = createTrustedProxyList()) {
     const socketAddress = normalizeIpAddress(request.socket && request.socket.remoteAddress);
     if (!socketAddress || !isTrustedProxy(socketAddress, trustedProxyList)) {
@@ -540,6 +548,9 @@ function createServer(options = {}) {
         response.setHeader('X-Content-Type-Options', 'nosniff');
         response.setHeader('Referrer-Policy', 'same-origin');
         response.setHeader('X-Frame-Options', 'DENY');
+        if (process.env.NODE_ENV === 'production' && isSecureRequest(request, trustedProxyList)) {
+            response.setHeader('Strict-Transport-Security', 'max-age=31536000');
+        }
         response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob: https://cdnjs.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
         const pathname = new URL(request.url, 'http://localhost').pathname;
 
@@ -657,6 +668,7 @@ module.exports = {
     analyzeContract,
     createTrustedProxyList,
     getClientAddress,
+    isSecureRequest,
     normalizeAnalysisInput,
     analysisQuota,
     isRateLimited,

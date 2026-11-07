@@ -18,6 +18,44 @@ test('health informa que Gemini no está configurado sin exponer secretos', asyn
     }
 });
 
+test('activa HSTS en producción solo si HTTPS viene de un proxy confiable', async function () {
+    const previousEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const trustedServer = createServer({ dbPath: ':memory:', trustedProxyIps: '127.0.0.1' });
+    await new Promise(resolve => trustedServer.listen(0, '127.0.0.1', resolve));
+    const trustedAddress = trustedServer.address();
+    try {
+        const trustedResponse = await fetch(`http://127.0.0.1:${trustedAddress.port}/api/health`, {
+            headers: { 'X-Forwarded-Proto': 'https' }
+        });
+        assert.equal(trustedResponse.headers.get('strict-transport-security'), 'max-age=31536000');
+
+        const insecureResponse = await fetch(`http://127.0.0.1:${trustedAddress.port}/api/health`, {
+            headers: { 'X-Forwarded-Proto': 'http' }
+        });
+        assert.equal(insecureResponse.headers.get('strict-transport-security'), null);
+    } finally {
+        await new Promise(resolve => trustedServer.close(resolve));
+        if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousEnvironment;
+    }
+
+    process.env.NODE_ENV = 'production';
+    const untrustedServer = createServer({ dbPath: ':memory:', trustedProxyIps: '127.0.0.2' });
+    await new Promise(resolve => untrustedServer.listen(0, '127.0.0.1', resolve));
+    const untrustedAddress = untrustedServer.address();
+    try {
+        const response = await fetch(`http://127.0.0.1:${untrustedAddress.port}/api/health`, {
+            headers: { 'X-Forwarded-Proto': 'https' }
+        });
+        assert.equal(response.headers.get('strict-transport-security'), null);
+    } finally {
+        await new Promise(resolve => untrustedServer.close(resolve));
+        if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousEnvironment;
+    }
+});
+
 test('el servidor no publica archivos internos ni el ejemplo de variables', async function () {
     const server = createServer({ dbPath: ':memory:' });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
