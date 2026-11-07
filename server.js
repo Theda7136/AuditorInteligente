@@ -9,7 +9,6 @@ const crypto = require('node:crypto');
 const { createAuthStore } = require('./auth-store.js');
 
 const ROOT = __dirname;
-const PORT = Number(process.env.PORT) || 8765;
 const MAX_BODY_BYTES = 1_500_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
 const LOGIN_ATTEMPTS_PER_EMAIL = 10;
@@ -102,6 +101,17 @@ function getClientAddress(request, trustedProxyList = createTrustedProxyList()) 
         current = chain[--index];
     }
     return current;
+}
+
+
+function getListenSettings(env = process.env) {
+    const port = env.PORT === undefined || env.PORT === '' ? 8765 : Number(env.PORT);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error('PORT debe ser un número entero entre 1 y 65535.');
+    }
+    const host = String(env.HOST || '127.0.0.1').trim();
+    if (!host) throw new Error('HOST no puede estar vacío.');
+    return { host, port };
 }
 
 function sendJson(response, status, payload) {
@@ -632,14 +642,16 @@ function createServer(options = {}) {
 if (require.main === module) {
     loadEnvFile();
     fs.mkdirSync(path.join(ROOT, 'data'), { recursive: true });
-    createServer().listen(PORT, () => {
-        console.log(`Auditor Inteligente disponible en http://localhost:${PORT}`);
+    const { host, port } = getListenSettings();
+    createServer().listen(port, host, () => {
+        console.log(`Auditor Inteligente disponible en http://${host}:${port}`);
         if (!process.env.GEMINI_API_KEY) console.log('Gemini no está configurado; el motor local seguirá disponible.');
     });
 }
 
 module.exports = {
     createServer,
+    getListenSettings,
     loadEnvFile,
     analyzeContract,
     createTrustedProxyList,
