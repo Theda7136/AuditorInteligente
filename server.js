@@ -19,7 +19,7 @@ const AUTH_COOKIE = 'ai_session';
 const CSRF_COOKIE = 'ai_csrf';
 const PASSWORD_MIN_LENGTH = 10;
 const requestCounts = new Map();
-const analysisCounts = new Map();
+const fallbackAnalysisCounts = new Map();
 const MIME_TYPES = {
     '.css': 'text/css; charset=utf-8',
     '.html': 'text/html; charset=utf-8',
@@ -142,7 +142,7 @@ function normalizeAnalysisInput(payload) {
     };
 }
 
-function analysisQuota(request, userId, now = Date.now()) {
+function analysisQuota(request, userId, now = Date.now(), quotaStore = null) {
     const address = request.socket.remoteAddress || 'unknown';
     const ipKey = 'ip:' + crypto.createHash('sha256').update(address).digest('hex');
     const userKey = userId ? 'user:' + String(userId) : null;
@@ -150,21 +150,24 @@ function analysisQuota(request, userId, now = Date.now()) {
     if (userKey) checks.push({ key: userKey, limit: ANALYSES_PER_USER });
     else checks.push({ key: 'guest:' + ipKey, limit: GUEST_ANALYSES_PER_IP });
 
-    if (analysisCounts.size > 2048) {
-        for (const [key, value] of analysisCounts) {
-            if (now - value.startedAt >= ANALYSIS_WINDOW_MS) analysisCounts.delete(key);
+    if (quotaStore && typeof quotaStore.consumeAnalysisQuota === 'function') {
+        return quotaStore.consumeAnalysisQuota(checks, now, ANALYSIS_WINDOW_MS);
+    }
+    if (fallbackAnalysisCounts.size > 2048) {
+        for (const [key, value] of fallbackAnalysisCounts) {
+            if (now - value.startedAt >= ANALYSIS_WINDOW_MS) fallbackAnalysisCounts.delete(key);
         }
     }
     for (const check of checks) {
-        const current = analysisCounts.get(check.key);
+        const current = fallbackAnalysisCounts.get(check.key);
         if (current && now - current.startedAt < ANALYSIS_WINDOW_MS && current.count >= check.limit) {
             return { allowed: false, retryAfter: Math.max(1, Math.ceil((current.startedAt + ANALYSIS_WINDOW_MS - now) / 1000)) };
         }
     }
     for (const check of checks) {
-        const current = analysisCounts.get(check.key);
+        const current = fallbackAnalysisCounts.get(check.key);
         if (!current || now - current.startedAt >= ANALYSIS_WINDOW_MS) {
-            analysisCounts.set(check.key, { startedAt: now, count: 1 });
+            fallbackAnalysisCounts.set(check.key, { startedAt: now, count: 1 });
         } else {
             current.count += 1;
         }
@@ -194,13 +197,13 @@ function analyzeEnvelopeError(request) {
     return null;
 }
 
-function authorizeAnalysis(request, payload, session, now = Date.now()) {
+function authorizeAnalysis(request, payload, session, now = Date.now(), quotaStore = null) {
     const normalized = normalizeAnalysisInput(payload);
     if (normalized.error) return { error: normalized.error };
     if (!process.env.GEMINI_API_KEY) {
         return { error: { status: 503, body: { code: 'NOT_CONFIGURED', error: 'Gemini no está configurado en el servidor.' } } };
     }
-    const quota = analysisQuota(request, session && session.user.id, now);
+    const quota = analysisQuota(request, session && session.user.id, now, quotaStore);
     if (!quota.allowed) {
         return {
             error: {
@@ -511,7 +514,7 @@ function createServer(options = {}) {
                 }
                 const payload = await readJson(request);
                 const session = getSession(request);
-                const authorization = authorizeAnalysis(request, payload, session);
+                const authorization = authorizeAnalysis(request, payload, session, Date.now(), store);
                 if (authorization.error) {
                     if (authorization.error.headers) response.setHeader('Retry-After', authorization.error.headers['Retry-After']);
                     sendJson(response, authorization.error.status, authorization.error.body);
