@@ -45,6 +45,12 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS analyses_user_idx ON analyses(user_id, id DESC);
+        CREATE TABLE IF NOT EXISTS analysis_quotas (
+            quota_key TEXT PRIMARY KEY,
+            window_started_at INTEGER NOT NULL,
+            count INTEGER NOT NULL CHECK(count > 0)
+        );
+        CREATE INDEX IF NOT EXISTS analysis_quotas_window_idx ON analysis_quotas(window_started_at);
     `);
 
     const statements = {
@@ -61,7 +67,11 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
             FROM analyses WHERE user_id = ? ORDER BY id DESC LIMIT 50`),
         findAnalysis: db.prepare('SELECT id FROM analyses WHERE id = ? AND user_id = ?'),
         deleteAnalysis: db.prepare('DELETE FROM analyses WHERE id = ? AND user_id = ?'),
-        clearAnalyses: db.prepare('DELETE FROM analyses WHERE user_id = ?')
+        clearAnalyses: db.prepare('DELETE FROM analyses WHERE user_id = ?'),
+        findAnalysisQuota: db.prepare('SELECT window_started_at, count FROM analysis_quotas WHERE quota_key = ?'),
+        deleteExpiredAnalysisQuotas: db.prepare('DELETE FROM analysis_quotas WHERE window_started_at <= ?'),
+        upsertAnalysisQuota: db.prepare(`INSERT INTO analysis_quotas (quota_key, window_started_at, count) VALUES (?, ?, ?)
+            ON CONFLICT(quota_key) DO UPDATE SET window_started_at = excluded.window_started_at, count = excluded.count`)
     };
 
     function register(email, password) {
@@ -106,6 +116,36 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
         if (tokenHash) statements.deleteSession.run(tokenHash);
     }
 
+    function consumeAnalysisQuota(checks, now, windowMs) {
+        db.exec('BEGIN IMMEDIATE');
+        try {
+            statements.deleteExpiredAnalysisQuotas.run(now - windowMs);
+            for (const check of checks) {
+                const current = statements.findAnalysisQuota.get(check.key);
+                if (current && current.count >= check.limit) {
+                    db.exec('ROLLBACK');
+                    return {
+                        allowed: false,
+                        retryAfter: Math.max(1, Math.ceil((current.window_started_at + windowMs - now) / 1000))
+                    };
+                }
+            }
+            for (const check of checks) {
+                const current = statements.findAnalysisQuota.get(check.key);
+                if (!current) {
+                    statements.upsertAnalysisQuota.run(check.key, now, 1);
+                } else {
+                    statements.upsertAnalysisQuota.run(check.key, current.window_started_at, current.count + 1);
+                }
+            }
+            db.exec('COMMIT');
+            return { allowed: true, retryAfter: 0 };
+        } catch (error) {
+            try { db.exec('ROLLBACK'); } catch (rollbackError) { /* transaction already ended */ }
+            throw error;
+        }
+    }
+
     function saveAnalysis(userId, entry) {
         const result = statements.insertAnalysis.run(userId, entry.title, entry.excerpt, entry.score, JSON.stringify(entry.data));
         return Number(result.lastInsertRowid);
@@ -125,7 +165,7 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
 
     return {
         register, authenticate, createSession, getSession, destroySession,
-        saveAnalysis, listAnalyses,
+        saveAnalysis, listAnalyses, consumeAnalysisQuota,
         deleteAnalysis: (id, userId) => statements.deleteAnalysis.run(id, userId).changes > 0,
         clearAnalyses: userId => statements.clearAnalyses.run(userId).changes,
         close: () => db.close()
