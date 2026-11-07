@@ -45,7 +45,7 @@ function loadEnvFile() {
 
 function normalizeIpAddress(value) {
     const address = String(value || '').trim();
-    const mappedIpv4 = address.match(/^::ffff:(\\d{1,3}(?:\\.\\d{1,3}){3})$/i);
+    const mappedIpv4 = address.match(/^::ffff:(\d{1,3}(?:\\.\d{1,3}){3})$/i);
     const normalized = mappedIpv4 ? mappedIpv4[1] : address;
     return net.isIP(normalized) ? normalized : null;
 }
