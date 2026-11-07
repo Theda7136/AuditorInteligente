@@ -41,7 +41,7 @@ test('el servidor entrega la aplicación web', async function () {
         assert.equal(response.status, 200);
         const policy = response.headers.get('content-security-policy');
         assert.match(policy, /default-src 'self'/);
-        assert.match(policy, /script-src 'self' https:\/\/cdnjs\\.cloudflare\\.com/);
+        assert.match(policy, /script-src 'self' https:\/\/cdnjs\.cloudflare\.com/);
         assert.doesNotMatch(policy, /script-src[^;]*unsafe-inline/);
         assert.match(policy, /object-src 'none'/);
         assert.match(policy, /frame-ancestors 'none'/);
