@@ -12,6 +12,8 @@ const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 8765;
 const MAX_BODY_BYTES = 1_500_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
+const LOGIN_ATTEMPTS_PER_EMAIL = 10;
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const ANALYSIS_WINDOW_MS = 60 * 60 * 1000;
 const GUEST_ANALYSES_PER_IP = 3;
 const ANALYSES_PER_USER = 12;
@@ -153,6 +155,19 @@ function isRateLimited(request, trustedProxyList, quotaStore = null, now = Date.
     }
     previous.count += 1;
     return previous.count > MAX_REQUESTS_PER_MINUTE;
+}
+
+
+function loginAttemptQuota(email, quotaStore, now = Date.now()) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const key = 'login-email:' + crypto.createHash('sha256').update(normalizedEmail).digest('hex');
+    if (!quotaStore || typeof quotaStore.consumeAnalysisQuota !== 'function') {
+        return { allowed: true, retryAfter: 0, key };
+    }
+    return {
+        ...quotaStore.consumeAnalysisQuota([{ key, limit: LOGIN_ATTEMPTS_PER_EMAIL }], now, LOGIN_ATTEMPT_WINDOW_MS),
+        key
+    };
 }
 
 function normalizeAnalysisInput(payload) {
@@ -487,11 +502,18 @@ function createServer(options = {}) {
                 return true;
             }
         } else {
+            const loginQuota = loginAttemptQuota(email, store);
+            if (!loginQuota.allowed) {
+                response.setHeader('Retry-After', String(loginQuota.retryAfter));
+                sendJson(response, 429, { code: 'RATE', error: 'Se alcanzó el límite de intentos. Espera antes de volver a intentar.' });
+                return true;
+            }
             user = store.authenticate(email, password);
             if (!user) {
                 sendJson(response, 401, { code: 'INVALID_CREDENTIALS', error: 'Correo o contraseña incorrectos.' });
                 return true;
             }
+            if (typeof store.resetAnalysisQuota === 'function') store.resetAnalysisQuota(loginQuota.key);
         }
 
         if (session) store.destroySession(session.tokenHash);
@@ -625,6 +647,7 @@ module.exports = {
     normalizeAnalysisInput,
     analysisQuota,
     isRateLimited,
+    loginAttemptQuota,
     analyzeOriginAllowed,
     analyzeEnvelopeError,
     authorizeAnalysis,

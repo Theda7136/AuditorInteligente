@@ -9,6 +9,7 @@ const {
     normalizeAnalysisInput,
     analysisQuota,
     isRateLimited,
+    loginAttemptQuota,
     createTrustedProxyList,
     getClientAddress,
     analyzeOriginAllowed,
@@ -131,6 +132,31 @@ test('persiste el límite de solicitudes de autenticación por IP tras reiniciar
         store = createAuthStore(filename);
         assert.equal(isRateLimited(address, proxyList, store, now + 21), true);
         assert.equal(isRateLimited(requestFrom('203.0.113.46'), proxyList, store, now + 22), false);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('limita intentos de inicio por correo normalizado y limpia el contador al iniciar sesión', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'auditor-login-quota-'));
+    const filename = path.join(directory, 'auth.sqlite');
+    const now = 1_700_000_200_000;
+    let store = createAuthStore(filename);
+    try {
+        let result;
+        for (let count = 0; count < 10; count += 1) {
+            result = loginAttemptQuota('Usuario@Example.test', store, now + count);
+            assert.equal(result.allowed, true);
+        }
+        const blocked = loginAttemptQuota('usuario@example.test', store, now + 20);
+        assert.equal(blocked.allowed, false);
+        assert.ok(blocked.retryAfter > 0);
+        store.close();
+        store = createAuthStore(filename);
+        assert.equal(loginAttemptQuota('USUARIO@example.test', store, now + 21).allowed, false);
+        store.resetAnalysisQuota(blocked.key);
+        assert.equal(loginAttemptQuota('usuario@example.test', store, now + 22).allowed, true);
     } finally {
         store.close();
         fs.rmSync(directory, { recursive: true, force: true });

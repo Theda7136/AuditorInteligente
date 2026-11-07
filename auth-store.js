@@ -70,6 +70,7 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
         clearAnalyses: db.prepare('DELETE FROM analyses WHERE user_id = ?'),
         findAnalysisQuota: db.prepare('SELECT window_started_at, count FROM analysis_quotas WHERE quota_key = ?'),
         deleteExpiredAnalysisQuotas: db.prepare('DELETE FROM analysis_quotas WHERE window_started_at <= ?'),
+        deleteAnalysisQuota: db.prepare('DELETE FROM analysis_quotas WHERE quota_key = ?'),
         upsertAnalysisQuota: db.prepare(`INSERT INTO analysis_quotas (quota_key, window_started_at, count) VALUES (?, ?, ?)
             ON CONFLICT(quota_key) DO UPDATE SET window_started_at = excluded.window_started_at, count = excluded.count`)
     };
@@ -114,6 +115,10 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
 
     function destroySession(tokenHash) {
         if (tokenHash) statements.deleteSession.run(tokenHash);
+    }
+
+    function resetAnalysisQuota(key) {
+        return statements.deleteAnalysisQuota.run(key).changes;
     }
 
     function consumeAnalysisQuota(checks, now, windowMs) {
@@ -165,7 +170,7 @@ function createAuthStore(filename = 'auditor-inteligente.sqlite') {
 
     return {
         register, authenticate, createSession, getSession, destroySession,
-        saveAnalysis, listAnalyses, consumeAnalysisQuota,
+        saveAnalysis, listAnalyses, consumeAnalysisQuota, resetAnalysisQuota,
         deleteAnalysis: (id, userId) => statements.deleteAnalysis.run(id, userId).changes > 0,
         clearAnalyses: userId => statements.clearAnalyses.run(userId).changes,
         close: () => db.close()
