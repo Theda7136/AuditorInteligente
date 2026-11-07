@@ -39,7 +39,7 @@ npm start
 
 Abre [http://localhost:8765](http://localhost:8765).
 
-La primera ejecución crea automáticamente `data/auditor-inteligente.sqlite`. Esa carpeta y sus archivos están excluidos de Git. No borres la base de datos si quieres conservar cuentas e historial.
+La primera ejecución crea automáticamente `data/auditor-inteligente.sqlite`. Esa carpeta y sus archivos están excluidos de Git. No borres la base de datos si quieres conservar cuentas e historial. El servidor también envía una política CSP: permite scripts propios y los recursos fijados de cdnjs, bloquea scripts incrustados, objetos y marcos, y limita las conexiones al mismo origen.
 
 ## Cuentas e historial
 
