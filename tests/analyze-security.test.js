@@ -8,6 +8,7 @@ const { createAuthStore } = require('../auth-store.js');
 const {
     normalizeAnalysisInput,
     analysisQuota,
+    isRateLimited,
     createTrustedProxyList,
     getClientAddress,
     analyzeOriginAllowed,
@@ -108,6 +109,28 @@ test('persiste las cuotas en SQLite y no consume la IP cuando se rechaza por cuo
         const sharedIp = 'persistent-quota-atomic-denial';
         assert.equal(analysisQuota(requestFrom(sharedIp), userId, now + 120, store).allowed, false);
         assert.equal(analysisQuota(requestFrom(sharedIp), userId + 1, now + 121, store).allowed, true);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('persiste el límite de solicitudes de autenticación por IP tras reiniciar SQLite', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'auditor-auth-rate-'));
+    const filename = path.join(directory, 'auth.sqlite');
+    const now = 1_700_000_100_000;
+    let store = createAuthStore(filename);
+    try {
+        const proxyList = createTrustedProxyList('');
+        const address = requestFrom('203.0.113.45');
+        for (let count = 0; count < 20; count += 1) {
+            assert.equal(isRateLimited(address, proxyList, store, now + count), false);
+        }
+        assert.equal(isRateLimited(address, proxyList, store, now + 20), true);
+        store.close();
+        store = createAuthStore(filename);
+        assert.equal(isRateLimited(address, proxyList, store, now + 21), true);
+        assert.equal(isRateLimited(requestFrom('203.0.113.46'), proxyList, store, now + 22), false);
     } finally {
         store.close();
         fs.rmSync(directory, { recursive: true, force: true });
