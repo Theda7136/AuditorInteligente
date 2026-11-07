@@ -39,6 +39,12 @@ test('el servidor entrega la aplicación web', async function () {
     try {
         const response = await fetch(`http://127.0.0.1:${address.port}/`);
         assert.equal(response.status, 200);
+        const policy = response.headers.get('content-security-policy');
+        assert.match(policy, /default-src 'self'/);
+        assert.match(policy, /script-src 'self' https:\/\/cdnjs\\.cloudflare\\.com/);
+        assert.doesNotMatch(policy, /script-src[^;]*unsafe-inline/);
+        assert.match(policy, /object-src 'none'/);
+        assert.match(policy, /frame-ancestors 'none'/);
         assert.match(await response.text(), /Auditor Inteligente|Revisión de contratos/i);
     } finally {
         await new Promise(resolve => server.close(resolve));
