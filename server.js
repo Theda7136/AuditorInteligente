@@ -135,9 +135,12 @@ function readJson(request) {
     });
 }
 
-function isRateLimited(request, trustedProxyList) {
-    const now = Date.now();
+function isRateLimited(request, trustedProxyList, quotaStore = null, now = Date.now()) {
     const address = getClientAddress(request, trustedProxyList);
+    const key = 'auth-ip:' + crypto.createHash('sha256').update(address).digest('hex');
+    if (quotaStore && typeof quotaStore.consumeAnalysisQuota === 'function') {
+        return !quotaStore.consumeAnalysisQuota([{ key, limit: MAX_REQUESTS_PER_MINUTE }], now, 60_000).allowed;
+    }
     const previous = requestCounts.get(address);
     if (!previous || now - previous.startedAt >= 60_000) {
         requestCounts.set(address, { startedAt: now, count: 1 });
@@ -447,7 +450,7 @@ function createServer(options = {}) {
             return true;
         }
 
-        if (isRateLimited(request, trustedProxyList)) {
+        if (isRateLimited(request, trustedProxyList, store)) {
             sendJson(response, 429, { code: 'RATE', error: 'Demasiados intentos. Espera un minuto.' });
             return true;
         }
@@ -621,6 +624,7 @@ module.exports = {
     getClientAddress,
     normalizeAnalysisInput,
     analysisQuota,
+    isRateLimited,
     analyzeOriginAllowed,
     analyzeEnvelopeError,
     authorizeAnalysis,
