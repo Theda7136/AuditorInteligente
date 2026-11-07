@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const net = require('node:net');
 const { Readable } = require('node:stream');
 const { createServer } = require('../server.js');
 
@@ -10,6 +11,14 @@ const input = {
     party: 'proveedor',
     priorities: { financial: 'media', abusive: 'alta', penalties: 'alta', compliance: 'baja' }
 };
+
+const fakeAddresses = new Map();
+let nextFakeAddress = 1;
+function testAddress(address) {
+    if (net.isIP(address)) return address;
+    if (!fakeAddresses.has(address)) fakeAddresses.set(address, '198.51.100.' + nextFakeAddress++);
+    return fakeAddresses.get(address);
+}
 
 function createApi(store) {
     const server = createServer({ store: store || { getSession: () => null } });
@@ -25,7 +34,7 @@ function createApi(store) {
             ...(options.origin === undefined ? {} : { origin: options.origin }),
             ...(options.cookie === undefined ? {} : { cookie: options.cookie })
         };
-        request.socket = { remoteAddress: options.ip || 'api-test-default' };
+        request.socket = { remoteAddress: testAddress(options.ip || 'api-test-default') };
 
         return new Promise(resolve => {
             const response = {
