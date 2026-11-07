@@ -62,7 +62,7 @@ Las contraseñas deben tener entre 10 y 128 caracteres. La sesión dura hasta si
 - `DELETE /api/history`: elimina todo el historial propio.
 - `POST /api/analyze`: solicita análisis a Gemini.
 
-Las rutas de autenticación y de historial requieren protección CSRF en las operaciones de escritura. La API de análisis continúa disponible para el modo invitado y aplica estas cuotas por ventana de una hora: 3 análisis por IP invitada, 12 por cuenta y 20 por IP en total. El endpoint acepta únicamente JSON y rechaza solicitudes de origen cruzado. El servidor valida el texto, el modelo y las opciones antes de invocar Gemini; limita la entrada analizada a 350 000 caracteres y la salida del modelo a 4096 tokens. La clave Gemini permanece en el servidor.
+Las rutas de autenticación y de historial requieren protección CSRF en las operaciones de escritura. La API de análisis continúa disponible para el modo invitado y aplica estas cuotas por ventana de una hora: 3 análisis por IP invitada, 12 por cuenta y 20 por IP en total. El endpoint acepta únicamente JSON y rechaza solicitudes de origen cruzado. El servidor valida el texto, el modelo y las opciones antes de invocar Gemini; limita la entrada analizada a 350 000 caracteres y la salida del modelo a 4096 tokens. La clave Gemini permanece en el servidor. Las cuotas se guardan en SQLite y sobreviven reinicios en una instalación de un solo servidor.
 
 ## Pruebas
 
@@ -78,7 +78,7 @@ El documento solo se envía a Gemini después de que el usuario acepte el envío
 
 Esta versión es para desarrollo y validación local, no está lista para abrirse directamente a Internet. Antes de producción hacen falta, entre otras cosas, HTTPS y configuración de proxy confiable, límites de intentos por cuenta/IP más robustos y distribuidos, recuperación/verificación de cuentas, política formal de retención, copias de seguridad protegidas, monitoreo y revisión de seguridad. SQLite tampoco cifra la base de datos por sí solo: protege el archivo mediante permisos del sistema operativo y almacenamiento seguro.
 
-Las cuotas de análisis de esta versión viven en la memoria del proceso: se reinician al reiniciar el servidor y no se comparten entre instancias. No deben considerarse un límite de facturación distribuido para una publicación pública.
+Las cuotas de análisis se persisten en la base SQLite para el despliegue de un solo servidor. No compartas ese archivo entre instancias simultáneas ni uses este mecanismo como límite de facturación distribuido. Si la aplicación se ejecuta detrás de un proxy inverso, configura una forma confiable de obtener la IP del cliente antes de depender de las cuotas por IP; no confíes directamente en cabeceras reenviadas por cualquier origen.
 
 El score del motor local es heurístico y no representa una probabilidad legal ni un dictamen profesional.
 
