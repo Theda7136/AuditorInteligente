@@ -80,7 +80,7 @@ Las contraseñas deben tener entre 10 y 128 caracteres. La sesión dura hasta si
 - `DELETE /api/history`: elimina todo el historial propio.
 - `POST /api/analyze`: solicita análisis a Gemini.
 
-Las rutas de autenticación y de historial requieren protección CSRF en las operaciones de escritura. La API de análisis continúa disponible para el modo invitado y aplica estas cuotas por ventana de una hora: 3 análisis por IP invitada, 12 por cuenta y 20 por IP en total. El endpoint acepta únicamente JSON y rechaza solicitudes de origen cruzado. El servidor valida el texto, el modelo y las opciones antes de invocar Gemini; limita la entrada analizada a 350 000 caracteres y la salida del modelo a 4096 tokens. La clave Gemini permanece en el servidor. Las cuotas se guardan en SQLite y sobreviven reinicios en una instalación de un solo servidor.
+Las rutas de autenticación y de historial requieren protección CSRF en las operaciones de escritura. La API de análisis continúa disponible para el modo invitado y aplica estas cuotas por ventana de una hora: 3 análisis por IP invitada, 12 por cuenta, 20 por IP en total y 100 en todo el servidor. El endpoint acepta únicamente JSON y rechaza solicitudes de origen cruzado. El servidor valida el texto, el modelo y las opciones antes de invocar Gemini; limita la entrada analizada a 350 000 caracteres y la salida del modelo a 4096 tokens. La clave Gemini permanece en el servidor. Las cuotas se guardan en SQLite y sobreviven reinicios en una instalación de un solo servidor.
 
 ## Pruebas
 
