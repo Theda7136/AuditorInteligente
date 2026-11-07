@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const net = require('node:net');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -23,8 +24,17 @@ const validInput = {
     priorities: { financial: 'media', abusive: 'alta', penalties: 'alta', compliance: 'baja' }
 };
 
+const fakeAddresses = new Map();
+let nextFakeAddress = 1;
 function requestFrom(address, headers = {}) {
-    return { socket: { remoteAddress: address }, headers: { host: 'app.example.test', ...headers } };
+    let remoteAddress = address;
+    if (!net.isIP(remoteAddress)) {
+        if (!fakeAddresses.has(remoteAddress)) {
+            fakeAddresses.set(remoteAddress, '198.51.100.' + nextFakeAddress++);
+        }
+        remoteAddress = fakeAddresses.get(remoteAddress);
+    }
+    return { socket: { remoteAddress }, headers: { host: 'app.example.test', ...headers } };
 }
 
 test('valida el objeto y los valores que afectan al prompt antes de llamar a Gemini', () => {
