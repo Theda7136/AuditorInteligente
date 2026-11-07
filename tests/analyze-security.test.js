@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createAuthStore } = require('../auth-store.js');
 const {
     normalizeAnalysisInput,
     analysisQuota,
@@ -53,6 +57,35 @@ test('aplica cuota baja a invitados, cuota por cuenta y techo compartido por IP'
     const limited = analysisQuota(requestFrom(sharedIp), 2_000_000, 30_021);
     assert.equal(limited.allowed, false);
     assert.ok(limited.retryAfter > 0);
+});
+
+test('persiste las cuotas en SQLite y no consume la IP cuando se rechaza por cuota de cuenta', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'auditor-quotas-'));
+    const filename = path.join(directory, 'auth.sqlite');
+    const now = 1_700_000_000_000;
+    let store = createAuthStore(filename);
+    try {
+        const guestIp = 'persistent-quota-guest';
+        for (let count = 0; count < 3; count += 1) {
+            assert.equal(analysisQuota(requestFrom(guestIp), null, now + count, store).allowed, true);
+        }
+        store.close();
+        store = createAuthStore(filename);
+        const limitedGuest = analysisQuota(requestFrom(guestIp), null, now + 10, store);
+        assert.equal(limitedGuest.allowed, false);
+        assert.ok(limitedGuest.retryAfter > 0);
+
+        const userId = 987654321;
+        for (let count = 0; count < 12; count += 1) {
+            assert.equal(analysisQuota(requestFrom('persistent-user-' + count), userId, now + 100 + count, store).allowed, true);
+        }
+        const sharedIp = 'persistent-quota-atomic-denial';
+        assert.equal(analysisQuota(requestFrom(sharedIp), userId, now + 120, store).allowed, false);
+        assert.equal(analysisQuota(requestFrom(sharedIp), userId + 1, now + 121, store).allowed, true);
+    } finally {
+        store.close();
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
 });
 
 test('rechaza peticiones de origen cruzado y acepta el mismo origen o clientes sin Origin', () => {
