@@ -14,7 +14,8 @@ const MAX_REQUESTS_PER_MINUTE = 20;
 const LOGIN_ATTEMPTS_PER_EMAIL = 10;
 const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const ANALYSIS_WINDOW_MS = 60 * 60 * 1000;
-const GLOBAL_ANALYSES_PER_HOUR = 100;
+const DEFAULT_GLOBAL_ANALYSES_PER_HOUR = 100;
+const MAX_GLOBAL_ANALYSES_PER_HOUR = 100_000;
 const GUEST_ANALYSES_PER_IP = 3;
 const ANALYSES_PER_USER = 12;
 const ANALYSES_PER_IP = 20;
@@ -121,6 +122,19 @@ function getListenSettings(env = process.env) {
     const host = String(env.HOST || '127.0.0.1').trim();
     if (!host) throw new Error('HOST no puede estar vacío.');
     return { host, port };
+}
+
+function getGeminiQuotaSettings(env = process.env) {
+    const configuredLimit = env.GEMINI_MAX_ANALYSES_PER_HOUR;
+    const globalAnalysesPerHour = configuredLimit === undefined || configuredLimit === ''
+        ? DEFAULT_GLOBAL_ANALYSES_PER_HOUR
+        : Number(configuredLimit);
+    if (!Number.isSafeInteger(globalAnalysesPerHour)
+        || globalAnalysesPerHour < 1
+        || globalAnalysesPerHour > MAX_GLOBAL_ANALYSES_PER_HOUR) {
+        throw new Error('GEMINI_MAX_ANALYSES_PER_HOUR debe ser un entero entre 1 y 100000.');
+    }
+    return { globalAnalysesPerHour };
 }
 
 function sendJson(response, status, payload) {
@@ -245,7 +259,7 @@ function analysisQuota(request, userId, now = Date.now(), quotaStore = null, tru
     const ipKey = 'ip:' + crypto.createHash('sha256').update(address).digest('hex');
     const userKey = userId ? 'user:' + String(userId) : null;
     const checks = [
-        { key: 'global:gemini', limit: GLOBAL_ANALYSES_PER_HOUR },
+        { key: 'global:gemini', limit: getGeminiQuotaSettings().globalAnalysesPerHour },
         { key: ipKey, limit: ANALYSES_PER_IP }
     ];
     if (userKey) checks.push({ key: userKey, limit: ANALYSES_PER_USER });
@@ -444,6 +458,7 @@ function clearAuthCookies(response) {
 }
 
 function createServer(options = {}) {
+    getGeminiQuotaSettings();
     const trustedProxyList = createTrustedProxyList(options.trustedProxyIps ?? process.env.TRUSTED_PROXY_IPS ?? '');
     const store = options.store || createAuthStore(options.dbPath || path.join(ROOT, 'data', 'auditor-inteligente.sqlite'));
     const ownStore = !options.store;
@@ -668,6 +683,7 @@ if (require.main === module) {
 module.exports = {
     createServer,
     getListenSettings,
+    getGeminiQuotaSettings,
     loadEnvFile,
     analyzeContract,
     createTrustedProxyList,
