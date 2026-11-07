@@ -559,4 +559,3 @@ module.exports = {
     authorizeAnalysis,
     parseCookies
 };
-
