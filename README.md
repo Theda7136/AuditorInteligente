@@ -49,7 +49,7 @@ Puedes seguir usando la aplicación como invitado. En ese modo el historial se c
 - El historial se filtra por el usuario autenticado. Cada cuenta solo puede consultar y borrar sus propios análisis.
 - El servidor guarda el dictamen y un extracto breve, no el documento completo. El dictamen puede contener citas extraídas del contrato.
 
-Las contraseñas deben tener entre 10 y 128 caracteres. La sesión dura hasta siete días, salvo cierre de sesión o expiración. No hay recuperación de contraseña ni verificación de correo en esta versión.
+Las contraseñas deben tener entre 10 y 128 caracteres. La sesión dura hasta siete días, salvo cierre de sesión o expiración. Los inicios de sesión admiten hasta 10 intentos por correo normalizado en 15 minutos, además del límite por IP; un inicio correcto limpia el contador de ese correo. No hay recuperación de contraseña ni verificación de correo en esta versión.
 
 ## API principal
 
@@ -79,7 +79,7 @@ Las pruebas cubren el motor de reglas, la API, el registro, el inicio/cierre de 
 
 El documento solo se envía a Gemini después de que el usuario acepte el envío en la interfaz. Google procesa ese contenido bajo sus propias condiciones. En modo cuenta, el servidor guarda el resultado del análisis y un extracto corto; las citas del dictamen pueden contener fragmentos del documento. El texto completo no se guarda en SQLite.
 
-Esta versión es para desarrollo y validación local, no está lista para abrirse directamente a Internet. Antes de producción hacen falta, entre otras cosas, HTTPS y configuración de proxy confiable, límites de intentos por cuenta además de los límites por IP, recuperación/verificación de cuentas, política formal de retención, copias de seguridad protegidas, monitoreo y revisión de seguridad. SQLite tampoco cifra la base de datos por sí solo: protege el archivo mediante permisos del sistema operativo y almacenamiento seguro.
+Esta versión es para desarrollo y validación local, no está lista para abrirse directamente a Internet. Antes de producción hacen falta, entre otras cosas, HTTPS y configuración de proxy confiable, revisión del equilibrio entre límites de inicio y bloqueos temporales, recuperación/verificación de cuentas, política formal de retención, copias de seguridad protegidas, monitoreo y revisión de seguridad. SQLite tampoco cifra la base de datos por sí solo: protege el archivo mediante permisos del sistema operativo y almacenamiento seguro.
 
 El límite de solicitudes a las rutas de autenticación es de 20 por minuto y por IP; también se guarda en SQLite y sobrevive reinicios. Las cuotas de análisis se persisten en la base SQLite para el despliegue de un solo servidor. No compartas ese archivo entre instancias simultáneas ni uses este mecanismo como límite de facturación distribuido. Por defecto, el servidor ignora `X-Forwarded-For` y usa la dirección de la conexión. Si está detrás de un proxy inverso, configura `TRUSTED_PROXY_IPS` con las IP o subredes CIDR exactas de tus proxies (separadas por comas). Solo entonces se aceptará la cadena reenviada, y se recorrerá desde el proxy más cercano. Asegúrate de que el servidor de la aplicación no sea accesible directamente por una ruta que permita suplantar a un proxy confiable.
 
