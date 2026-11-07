@@ -11,10 +11,15 @@ const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 8765;
 const MAX_BODY_BYTES = 1_500_000;
 const MAX_REQUESTS_PER_MINUTE = 20;
+const ANALYSIS_WINDOW_MS = 60 * 60 * 1000;
+const GUEST_ANALYSES_PER_IP = 3;
+const ANALYSES_PER_USER = 12;
+const ANALYSES_PER_IP = 20;
 const AUTH_COOKIE = 'ai_session';
 const CSRF_COOKIE = 'ai_csrf';
 const PASSWORD_MIN_LENGTH = 10;
 const requestCounts = new Map();
+const analysisCounts = new Map();
 const MIME_TYPES = {
     '.css': 'text/css; charset=utf-8',
     '.html': 'text/html; charset=utf-8',
@@ -76,25 +81,149 @@ function isRateLimited(request) {
     const previous = requestCounts.get(address);
     if (!previous || now - previous.startedAt >= 60_000) {
         requestCounts.set(address, { startedAt: now, count: 1 });
+        if (requestCounts.size > 1024) {
+            for (const [key, value] of requestCounts) {
+                if (now - value.startedAt >= 60_000) requestCounts.delete(key);
+            }
+        }
         return false;
     }
     previous.count += 1;
     return previous.count > MAX_REQUESTS_PER_MINUTE;
 }
 
+function normalizeAnalysisInput(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'La solicitud debe ser un objeto JSON.' } } };
+    }
+    const contractText = typeof payload.contractText === 'string' ? payload.contractText.trim() : '';
+    if (!contractText) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'Debes enviar el texto del contrato.' } } };
+    }
+    if (contractText.length > engine.MAX_GEMINI_CHARS * 2) {
+        return { error: { status: 413, body: { code: 'DOCUMENT_TOO_LARGE', error: 'El documento supera el límite permitido.' } } };
+    }
+
+    const contractTypes = ['Servicios', 'NDA', 'Arrendamiento', 'Compraventa', 'Licitación', 'Laboral', 'Distribución', 'Otro'];
+    if (payload.contractType !== undefined && !contractTypes.includes(payload.contractType)) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'El tipo de contrato no es válido.' } } };
+    }
+    if (payload.jurisdiction !== undefined && !Object.hasOwn(engine.JURISDICTIONS, payload.jurisdiction)) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'La jurisdicción no es válida.' } } };
+    }
+    if (payload.party !== undefined && !['proveedor', 'cliente', 'neutral'].includes(payload.party)) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'La parte representada no es válida.' } } };
+    }
+    if (payload.model !== undefined && !engine.MODELS.some(model => model.id === payload.model)) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'El modelo seleccionado no es válido.' } } };
+    }
+
+    const priorities = payload.priorities === undefined ? {} : payload.priorities;
+    const priorityValues = ['alta', 'media', 'baja'];
+    if (!priorities || typeof priorities !== 'object' || Array.isArray(priorities)
+        || ['financial', 'abusive', 'penalties', 'compliance'].some(key =>
+            priorities[key] !== undefined && !priorityValues.includes(priorities[key]))) {
+        return { error: { status: 400, body: { code: 'INVALID_INPUT', error: 'Las prioridades no tienen un formato válido.' } } };
+    }
+
+    return {
+        value: {
+            contractText,
+            model: engine.knownModel(payload.model),
+            contractType: payload.contractType || 'Servicios',
+            jurisdiction: payload.jurisdiction || 'CO',
+            party: payload.party || 'neutral',
+            priorities: {
+                financial: priorities.financial || 'media',
+                abusive: priorities.abusive || 'media',
+                penalties: priorities.penalties || 'media',
+                compliance: priorities.compliance || 'media'
+            }
+        }
+    };
+}
+
+function analysisQuota(request, userId, now = Date.now()) {
+    const address = request.socket.remoteAddress || 'unknown';
+    const ipKey = 'ip:' + crypto.createHash('sha256').update(address).digest('hex');
+    const userKey = userId ? 'user:' + String(userId) : null;
+    const checks = [{ key: ipKey, limit: ANALYSES_PER_IP }];
+    if (userKey) checks.push({ key: userKey, limit: ANALYSES_PER_USER });
+    else checks.push({ key: 'guest:' + ipKey, limit: GUEST_ANALYSES_PER_IP });
+
+    if (analysisCounts.size > 2048) {
+        for (const [key, value] of analysisCounts) {
+            if (now - value.startedAt >= ANALYSIS_WINDOW_MS) analysisCounts.delete(key);
+        }
+    }
+    for (const check of checks) {
+        const current = analysisCounts.get(check.key);
+        if (current && now - current.startedAt < ANALYSIS_WINDOW_MS && current.count >= check.limit) {
+            return { allowed: false, retryAfter: Math.max(1, Math.ceil((current.startedAt + ANALYSIS_WINDOW_MS - now) / 1000)) };
+        }
+    }
+    for (const check of checks) {
+        const current = analysisCounts.get(check.key);
+        if (!current || now - current.startedAt >= ANALYSIS_WINDOW_MS) {
+            analysisCounts.set(check.key, { startedAt: now, count: 1 });
+        } else {
+            current.count += 1;
+        }
+    }
+    return { allowed: true, retryAfter: 0 };
+}
+
+function analyzeOriginAllowed(request) {
+    const site = request.headers['sec-fetch-site'];
+    if (site === 'cross-site') return false;
+    const origin = request.headers.origin;
+    if (!origin) return true;
+    try {
+        return new URL(origin).host === request.headers.host;
+    } catch (error) {
+        return false;
+    }
+}
+
+function analyzeEnvelopeError(request) {
+    if (!analyzeOriginAllowed(request)) {
+        return { status: 403, body: { code: 'ORIGIN', error: 'La solicitud debe originarse en esta aplicación.' } };
+    }
+    if (!/^application\/json(?:\s*;|$)/i.test(request.headers['content-type'] || '')) {
+        return { status: 415, body: { code: 'CONTENT_TYPE', error: 'La solicitud debe usar application/json.' } };
+    }
+    return null;
+}
+
+function authorizeAnalysis(request, payload, session, now = Date.now()) {
+    const normalized = normalizeAnalysisInput(payload);
+    if (normalized.error) return { error: normalized.error };
+    if (!process.env.GEMINI_API_KEY) {
+        return { error: { status: 503, body: { code: 'NOT_CONFIGURED', error: 'Gemini no está configurado en el servidor.' } } };
+    }
+    const quota = analysisQuota(request, session && session.user.id, now);
+    if (!quota.allowed) {
+        return {
+            error: {
+                status: 429,
+                headers: { 'Retry-After': String(quota.retryAfter) },
+                body: { code: 'QUOTA', error: 'Se alcanzó el límite de análisis. Inténtalo más tarde.' }
+            }
+        };
+    }
+    return { input: normalized.value };
+}
+
 async function analyzeContract(payload) {
+    const normalized = normalizeAnalysisInput(payload);
+    if (normalized.error) return normalized.error;
+    payload = normalized.value;
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
         return { status: 503, body: { code: 'NOT_CONFIGURED', error: 'Gemini no está configurado en el servidor.' } };
     }
 
-    const contractText = typeof payload.contractText === 'string' ? payload.contractText.trim() : '';
-    if (!contractText) {
-        return { status: 400, body: { code: 'INVALID_INPUT', error: 'Debes enviar el texto del contrato.' } };
-    }
-    if (contractText.length > engine.MAX_GEMINI_CHARS * 2) {
-        return { status: 413, body: { code: 'DOCUMENT_TOO_LARGE', error: 'El documento supera el límite permitido.' } };
-    }
+    const contractText = payload.contractText;
 
     const model = engine.knownModel(payload.model);
     const request = engine.buildGeminiRequest({
@@ -376,11 +505,20 @@ function createServer(options = {}) {
             }
 
             if (request.method === 'POST' && pathname === '/api/analyze') {
-                if (isRateLimited(request)) {
-                    sendJson(response, 429, { code: 'RATE', error: 'Demasiadas solicitudes. Espera un minuto.' });
+                const envelopeError = analyzeEnvelopeError(request);
+                if (envelopeError) {
+                    sendJson(response, envelopeError.status, envelopeError.body);
                     return;
                 }
-                const outcome = await analyzeContract(await readJson(request));
+                const payload = await readJson(request);
+                const session = getSession(request);
+                const authorization = authorizeAnalysis(request, payload, session);
+                if (authorization.error) {
+                    if (authorization.error.headers) response.setHeader('Retry-After', authorization.error.headers['Retry-After']);
+                    sendJson(response, authorization.error.status, authorization.error.body);
+                    return;
+                }
+                const outcome = await analyzeContract(authorization.input);
                 sendJson(response, outcome.status, outcome.body);
                 return;
             }
@@ -411,4 +549,15 @@ if (require.main === module) {
     });
 }
 
-module.exports = { createServer, loadEnvFile, analyzeContract, parseCookies };
+module.exports = {
+    createServer,
+    loadEnvFile,
+    analyzeContract,
+    normalizeAnalysisInput,
+    analysisQuota,
+    analyzeOriginAllowed,
+    analyzeEnvelopeError,
+    authorizeAnalysis,
+    parseCookies
+};
+
