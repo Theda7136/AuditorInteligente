@@ -7,6 +7,7 @@ const path = require('node:path');
 const { createAuthStore } = require('../auth-store.js');
 const {
     normalizeAnalysisInput,
+    getListenSettings,
     analysisQuota,
     isRateLimited,
     loginAttemptQuota,
@@ -38,6 +39,13 @@ function requestFrom(address, headers = {}) {
     }
     return { socket: { remoteAddress }, headers: { host: 'app.example.test', ...headers } };
 }
+
+test('escucha en loopback por defecto y valida host/puerto configurados', () => {
+    assert.deepEqual(getListenSettings({}), { host: '127.0.0.1', port: 8765 });
+    assert.deepEqual(getListenSettings({ HOST: '0.0.0.0', PORT: '9000' }), { host: '0.0.0.0', port: 9000 });
+    assert.throws(() => getListenSettings({ PORT: 'no-es-puerto' }), /PORT/);
+    assert.throws(() => getListenSettings({ PORT: '70000' }), /PORT/);
+});
 
 test('valida el objeto y los valores que afectan al prompt antes de llamar a Gemini', () => {
     assert.equal(normalizeAnalysisInput(validInput).value.contractType, 'Servicios');
